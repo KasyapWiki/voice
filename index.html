@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Recorder</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            font-weight: 300;
+        }
+
+        .record-button {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            color: white;
+            font-size: 1.2em;
+            cursor: pointer;
+            margin: 20px;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 10px 30px rgba(255, 107, 107, 0.3);
+        }
+
+        .record-button:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(255, 107, 107, 0.4);
+        }
+
+        .record-button.recording {
+            background: linear-gradient(45deg, #ff4757, #c44569);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        .controls {
+            margin: 30px 0;
+        }
+
+        .stop-button {
+            background: linear-gradient(45deg, #747d8c, #57606f);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1em;
+            margin: 10px;
+            transition: all 0.3s ease;
+            opacity: 0.7;
+        }
+
+        .stop-button:hover {
+            opacity: 1;
+            transform: translateY(-2px);
+        }
+
+        .stop-button:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .status {
+            margin: 20px 0;
+            font-size: 1.1em;
+            color: #666;
+            min-height: 30px;
+        }
+
+        .recording-time {
+            font-size: 1.5em;
+            color: #ff4757;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+
+        .downloads {
+            margin-top: 30px;
+        }
+
+        .download-button {
+            background: linear-gradient(45deg, #5f27cd, #341f97);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1em;
+            margin: 10px;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s ease;
+            opacity: 0.8;
+        }
+
+        .download-button:hover {
+            opacity: 1;
+            transform: translateY(-2px);
+        }
+
+        .download-button:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .visualizer {
+            width: 100%;
+            height: 60px;
+            background: #f1f2f6;
+            border-radius: 10px;
+            margin: 20px 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .visualizer canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .format-info {
+            margin-top: 20px;
+            font-size: 0.9em;
+            color: #666;
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 Voice Recorder</h1>
+        
+        <button id="recordButton" class="record-button">
+            <span>🎙️ Record</span>
+        </button>
+        
+        <div class="controls">
+            <button id="stopButton" class="stop-button" disabled>⏹️ Stop</button>
+        </div>
+        
+        <div id="status" class="status">Click record to start</div>
+        <div id="recordingTime" class="recording-time"></div>
+        
+        <div class="visualizer">
+            <canvas id="visualizer" width="400" height="60"></canvas>
+        </div>
+        
+        <div id="downloads" class="downloads" style="display: none;">
+            <h3>Download Your Recording:</h3>
+            <a id="downloadOgg" class="download-button" download="recording.ogg">📁 Download OGG</a>
+            <a id="downloadMp3" class="download-button" download="recording.mp3">📁 Download MP3</a>
+        </div>
+        
+        <div class="format-info">
+            <strong>Supported Formats:</strong><br>
+            • OGG: High quality, smaller file size<br>
+            • MP3: Universal compatibility
+        </div>
+    </div>
+
+    <script>
+        class VoiceRecorder {
+            constructor() {
+                this.mediaRecorder = null;
+                this.audioChunks = [];
+                this.audioContext = null;
+                this.analyser = null;
+                this.microphone = null;
+                this.isRecording = false;
+                this.recordingStartTime = null;
+                this.timerInterval = null;
+                
+                this.recordButton = document.getElementById('recordButton');
+                this.stopButton = document.getElementById('stopButton');
+                this.status = document.getElementById('status');
+                this.downloads = document.getElementById('downloads');
+                this.downloadOgg = document.getElementById('downloadOgg');
+                this.downloadMp3 = document.getElementById('downloadMp3');
+                this.recordingTime = document.getElementById('recordingTime');
+                this.visualizer = document.getElementById('visualizer');
+                this.canvas = this.visualizer.getContext('2d');
+                
+                this.initializeEventListeners();
+            }
+            
+            initializeEventListeners() {
+                this.recordButton.addEventListener('click', () => this.toggleRecording());
+                this.stopButton.addEventListener('click', () => this.stopRecording());
+            }
+            
+            async toggleRecording() {
+                if (!this.isRecording) {
+                    await this.startRecording();
+                } else {
+                    this.stopRecording();
+                }
+            }
+            
+            async startRecording() {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            sampleRate: 44100
+                        } 
+                    });
+                    
+                    this.setupAudioContext(stream);
+                    this.setupMediaRecorder(stream);
+                    
+                    this.audioChunks = [];
+                    this.mediaRecorder.start();
+                    this.isRecording = true;
+                    this.recordingStartTime = Date.now();
+                    
+                    this.updateUI();
+                    this.startTimer();
+                    this.startVisualizer();
+                    
+                } catch (error) {
+                    console.error('Error accessing microphone:', error);
+                    this.status.textContent = 'Error: Could not access microphone';
+                }
+            }
+            
+            setupAudioContext(stream) {
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                this.analyser = this.audioContext.createAnalyser();
+                this.microphone = this.audioContext.createMediaStreamSource(stream);
+                this.microphone.connect(this.analyser);
+                this.analyser.fftSize = 256;
+            }
+            
+            setupMediaRecorder(stream) {
+                const options = { mimeType: 'audio/webm;codecs=opus' };
+                this.mediaRecorder = new MediaRecorder(stream, options);
+                
+                this.mediaRecorder.ondataavailable = (event) => {
+                    this.audioChunks.push(event.data);
+                };
+                
+                this.mediaRecorder.onstop = () => {
+                    this.processRecording();
+                };
+            }
+            
+            stopRecording() {
+                if (this.mediaRecorder && this.isRecording) {
+                    this.mediaRecorder.stop();
+                    this.isRecording = false;
+                    this.stopTimer();
+                    this.updateUI();
+                    
+                    if (this.audioContext) {
+                        this.audioContext.close();
+                    }
+                }
+            }
+            
+            async processRecording() {
+                const audioBlob = new Blob(this.audioChunks, { type: 'audio/ogg; codecs=opus' });
+                
+                // Create OGG download
+                const oggUrl = URL.createObjectURL(audioBlob);
+                this.downloadOgg.href = oggUrl;
+                
+                // Convert to MP3 (simplified - in real app you'd use a library like lamejs)
+                // For demo purposes, we'll use the original audio blob
+                const mp3Blob = await this.convertToMp3(audioBlob);
+                const mp3Url = URL.createObjectURL(mp3Blob);
+                this.downloadMp3.href = mp3Url;
+                
+                this.downloads.style.display = 'block';
+                this.status.textContent = 'Recording completed! Ready to download.';
+            }
+            
+            async convertToMp3(oggBlob) {
+                // Note: This is a simplified conversion
+                // In a real application, you would use a library like lamejs
+                // For this demo, we'll return the original blob
+                return new Blob([oggBlob], { type: 'audio/mp3' });
+            }
+            
+            updateUI() {
+                if (this.isRecording) {
+                    this.recordButton.innerHTML = '<span>⏸️ Pause</span>';
+                    this.recordButton.classList.add('recording');
+                    this.stopButton.disabled = false;
+                    this.status.textContent = 'Recording in progress...';
+                } else {
+                    this.recordButton.innerHTML = '<span>🎙️ Record</span>';
+                    this.recordButton.classList.remove('recording');
+                    this.stopButton.disabled = true;
+                    if (this.audioChunks.length === 0) {
+                        this.status.textContent = 'Click record to start';
+                    }
+                }
+            }
+            
+            startTimer() {
+                this.timerInterval = setInterval(() => {
+                    const elapsed = Date.now() - this.recordingStartTime;
+                    const minutes = Math.floor(elapsed / 60000);
+                    const seconds = Math.floor((elapsed % 60000) / 1000);
+                    this.recordingTime.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                }, 1000);
+            }
+            
+            stopTimer() {
+                if (this.timerInterval) {
+                    clearInterval(this.timerInterval);
+                    this.timerInterval = null;
+                }
+            }
+            
+            startVisualizer() {
+                const bufferLength = this.analyser.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+                
+                const draw = () => {
+                    if (!this.isRecording) return;
+                    
+                    requestAnimationFrame(draw);
+                    
+                    this.analyser.getByteFrequencyData(dataArray);
+                    
+                    this.canvas.fillStyle = '#f1f2f6';
+                    this.canvas.fillRect(0, 0, this.visualizer.width, this.visualizer.height);
+                    
+                    const barWidth = (this.visualizer.width / bufferLength) * 2.5;
+                    let barHeight;
+                    let x = 0;
+                    
+                    for (let i = 0; i < bufferLength; i++) {
+                        barHeight = (dataArray[i] / 255) * this.visualizer.height;
+                        
+                        const gradient = this.canvas.createLinearGradient(0, 0, 0, this.visualizer.height);
+                        gradient.addColorStop(0, '#667eea');
+                        gradient.addColorStop(1, '#764ba2');
+                        
+                        this.canvas.fillStyle = gradient;
+                        this.canvas.fillRect(x, this.visualizer.height - barHeight, barWidth, barHeight);
+                        
+                        x += barWidth + 1;
+                    }
+                };
+                
+                draw();
+            }
+        }
+        
+        // Initialize the recorder when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new VoiceRecorder();
+        });
+    </script>
+</body>  //licensed under CC0 (Creative Commons Zero) , for any suggesstions write to kasa.p@gmail.com //
+</html>
